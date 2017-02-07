@@ -1,0 +1,194 @@
+---
+title: Analysis of the Affect of Transmission Type on Miles per Gallon in the mtcars
+  Dataset
+output: pdf_document
+---
+```{r libchunk, echo=FALSE}
+library(ggplot2)
+library(car)
+```
+
+
+## Executive Summary
+Through an examination of the mtcars dataset, we have determined that the type of transmition in a car has a statistically significant affect on the mileage of the car.  Specifically, stadard transmission cars have better gas mileage than automatic transmition cars.  We discuss the results in detail below, including our atempt to separate confounding factors and determine the existence of outliers in the data.
+
+## Introduction
+Our approach to the dataset follows three main paths:
+
+1. Examine the direct relationship between transmission type and miles per gallon (mpg).
+2. Examine the full data set to see if there is a parsimonious model representing mpg that includes transmission type.
+3. Examine the model to see how outliers affect the model.
+
+## Linear Model Comparing Transmission Type to Mpg
+Comparing transmission type to mpg directly does not present many difficulties and there are good reasons in this comparison to see a relationship.  Figure 1 shows the histograms of vehicle mpg grouped by transmission type.  
+
+Looking at Figure 1 we can see that manual transmission vehicles have a higher mean mpg than automatics, but with a higher variance.  This is confirmed by:
+
+```{r echo=FALSE, comment=NA, tidy=TRUE}
+mg<-subset(mtcars, select=c(mpg, am))
+a <-mg[mg$am==0,]$mpg
+m <-mg[mg$am==1,]$mpg
+b<-rbind(
+  c("automatic mean", "automatic sdev", "manual mean", "manual sedv"),
+  round(c(mean(a),sd(a), mean(m),sd(m)), 4)
+)
+print(b)
+```
+So with a very basic analysis, we can see that there is a mean improvement of ~7 mpg going from manual to automatic transmission.  We can expand this analysis with a linear model as follows:
+
+`summary(lm(mpg ~ am, data=mtcars))`
+```{r echo=FALSE, comment=NA, tidy=TRUE}
+am_fit <- lm(mpg ~ am, data=mtcars)
+sum<-summary(am_fit)
+sum$coefficients
+sprintf("%s  %f", "Adjusted R^2:", sum$adj.r.squared)
+```
+
+The 2D linear model above echoes the results of looking at the classes individually.  in addition we can see that the p-values are significant to greater than 0.99.  Looking at the adjusted $R^2$ however, we can see that only about 34% of the variance is accounted for in this model.  
+
+From the $R^2$ number, the question arises: does the mtcars data imply a better model that includes transmission type?
+
+## A Parsimonious Model for Mpg
+We can start this analysis by simply including all the mtcars columns in the linear model and then pulling out the columns that do not contribute or that are mixed with the other columns in the model.
+
+`summary(lm(mpg ~ ., data=mtcars))`
+
+Looking Table 1, we see that almost none of the p values are significant (we will look at 'wt' later) in this model, so lets look at the variance inflation to see if we can discover some independent columns for modeling mpg.
+
+`vif(full_fit)`
+```{r echo=FALSE, comment=NA}
+full_fit <- lm(mpg ~ ., data=mtcars)
+vif(full_fit)
+```
+
+The vif is very interesting as it shows that there are many confounding variable groups.  By trying models of varying combinations of these columns, we can settle on the model `lm(mpg ~ am + carb + vs`.  looking at the statistics for this model:
+
+```{r echo=FALSE, comment=NA, tidy=TRUE}
+fit1 <- lm(mpg ~ am + carb + vs, data=mtcars)
+sum<-summary(fit1)
+sum$coefficients
+sprintf("%s  %f", "Adjusted R^2:", sum$adj.r.squared)
+```
+
+Our experimentally derived linear model now accounts for 76% of the variance using only three columns.  also, looking at the vif for this model shows that these columns are relatively independent of each other:
+
+```{r echo=FALSE, comment=NA}
+vif(fit1)
+```
+
+There are better models of mpg in this data that do not include transmission type (column 'am').  Probably the best parsimonious model is `lm(mpg~wt, data=mtcars)`.
+
+```{r echo=FALSE, comment=NA, tidy=TRUE}
+fit2 <- lm(mpg ~ wt, data=mtcars)
+sum<-summary(fit2)
+sum$coefficients
+sprintf("%s  %f", "Adjusted R^2:", sum$adj.r.squared)
+```
+
+This model is significant and accounts for 74% of the variance with a single variable.  This seems pretty obvious since weight would logically be a big factor in determining gas milage.
+
+## Outliers
+Within the scope of the model, we want to be sure that certain points aren't overly influencing the model.  Table 2 below shows the PRESS residual for the model.  For the PRESS residuals we can see that there are three models which stand out in the model:
+
+* Datsun 710
+* Volvo 142E
+* Ford Pantera L
+
+In fact, these are the extreme data points shown in the model's residual plots see Figure 3 below).  These points do not seem to cause much distortion in the data set according to the residual plots.
+
+## Conclusion
+In conclusion we find that transmission type is a significant factor in the determination of mileage given the mtcars dataset.  Though there are other models than the ones that include transmission type, we can construct an effective model with transmission tyype as a major component.
+
+### Table 1: Coefficients from a linear model of mpg using all mtcars data
+```{r echo=FALSE, comment=NA, tidy=TRUE}
+full_fit <- lm(mpg ~ ., data=mtcars)
+sum<-summary(full_fit)
+sum$coefficients
+sprintf("%s  %f", "Adjusted R^2:", sum$adj.r.squared)
+```
+
+### Table 2: PRESS Residuals for the model `lm(mpg ~ am + carb + vs, data=mtcars)`
+
+```{r echo=FALSE, comment=NA, tidy=TRUE}
+resid(fit1)/(1-hatvalues(fit1))
+```
+
+### Figure 1: Histograms For Mpg on Manual and Automatic Transmission Vehicles in the mtcars Dataset.
+```{r fig.height=3.5,fig.width=8, echo=FALSE}
+
+mg$trans <- ifelse(mg$am, "Manual", "Automatic")
+g<-ggplot(mg, aes(x=mpg, fill= trans))
+g <- g + geom_histogram(colour = "black", binwidth=1)
+g <- g + facet_grid(. ~ trans)
+g
+```
+
+### Figure 2: residual plots for the linear model `lm(mpg ~ am)`.
+
+```{r, echo=FALSE, fig.height=5.5, fig.width=6, results='show'}
+par(mfrow = c(2, 2), mar = 0.1+c(4,4,1,1), oma =  c(0, 0, 2, 0))
+plot(am_fit, col=ifelse(mtcars$am>0, "blue", "red"), main="")
+```
+
+
+### Figure 3: Residual plots for the linear model `lm(mpg ~ am + carb + vs, data=mtcars)`
+
+```{r, echo=FALSE, fig.height=5.5, fig.width=6, results='show'}
+par(mfrow = c(2, 2), mar = 0.1+c(4,4,1,1), oma =  c(0, 0, 2, 0))
+plot(fit1, col=ifelse(mtcars$am>0, "blue", "red"), main="")
+```
+
+
+```{r, echo=FALSE, fig.height=3, fig.width=5, results='show'}
+par(mfrow = c(1, 2), mar = 0.1+c(4,4,1,1), oma =  c(0, 0, 2, 0))
+library(ggplot2)
+g = ggplot(mtcars, aes(x = am, y = mpg),
+)
+g = g + xlab("a = 0, m = 1")
+g = g + ylab("mpg")
+g = g + geom_point(size = 6, colour = "black", alpha=0.2)
+g = g + geom_point(size = 5, colour = "blue", alpha=0.2)
+g = g + geom_smooth(method = "lm", colour = "black")
+g
+plot(predict(am_fit), resid(am_fit))
+```
+
+```{r}
+hatvalues(am_fit)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+dfbetas(am_fit)
+```
+
+## 1 dimensional analysis
+
+```{r fig.height=8,fig.width=8,  cache = T}
+require(graphics)
+pairs(mtcars,panel=panel.smooth,main="cars data", col=ifelse(mtcars$am>0, "blue", "red"))
+```
+
+## box plot
+
+```{r, echo = FALSE, fig.height=4, fig.width=2}
+require(stats); require(graphics)
+boxplot(mpg ~ am, data = mtcars,
+        xlab = "Transmition Type", ylab = "MPG",
+        main = "mileage data", varwidth = TRUE, col = "lightgray")
+summary(lm(mpg ~ am, data = mtcars))$coef
+```
+
+```{r, echo=FALSE, fig.height=3, fig.width=6, results='show'}
+par(mfrow = c(1, 2), mar = 0.1+c(2,2,1,1), oma =  c(0, 0, 2, 0))
+fit1 <- lm(mpg~., data=mtcars)
+plot(predict(fit1), resid(fit1))
+fit2 <- lm(mpg~am, data=mtcars)
+plot(predict(fit2), resid(fit2))
+```
+```{r}
+full_fit <- lm(mpg ~ ., data=mtcars)
+am_fit <- lm(mpg ~ am, data=mtcars)
+```
+
+resid(fit)/(1-hatvalues(fit))
